@@ -7,4 +7,4 @@ clean:
 	touch example && rm example
 
 run: example
-	mpirun -np $(NUM_PROC) example
+	mpiexec -n $(NUM_PROC) example

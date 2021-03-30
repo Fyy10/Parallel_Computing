@@ -14,4 +14,4 @@ clean:
 	touch $(TARGET_NAME) && rm $(TARGET_NAME)
 
 run: main
-	mpirun -np $(NUM_PROC) $(TARGET_NAME) $(PRIME_N)
+	mpiexec -n $(NUM_PROC) $(TARGET_NAME) $(PRIME_N)
