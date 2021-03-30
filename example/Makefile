@@ -1,4 +1,4 @@
-NUM_PROC = 10
+NUM_PROC = 6
 
 example: example.c
 	mpicc example.c -o example
