@@ -5,21 +5,21 @@
 #define MIN(a, b) ((a) < (b) ? (a): (b))
 
 int main(int argc, char *argv[]) {
-    int count;
-    double elapsed_time;
-    int first;
-    int global_count;
-    int high_value;
+    int count;              // local prime count
+    double elapsed_time;    // time consumption
+    int first;              // index of the first multiple
+    int global_count;       // global prime count
+    int low_value;          // local low boundary
+    int high_value;         // local high boundary
     int i;
-    int id;
-    int index;
-    int low_value;
-    char *marked;
-    int n;
-    int p;
-    int proc0_size;
-    int prime;
-    int size;
+    int id;                 // process id
+    int index;              // index of current prime
+    char *marked;           // portion of 2, 3, ..., n
+    int n;                  // total problem size (2 - n)
+    int p;                  // number of process
+    int proc0_size;         // size of subarray on process 0
+    int prime;              // current prime
+    int size;               // size of 'marked'
 
     MPI_Init(&argc, &argv);
 
@@ -28,18 +28,22 @@ int main(int argc, char *argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     elapsed_time = -MPI_Wtime();
 
+    // check arg
     if (argc != 2) {
-        if (!id) printf("Command line: %s <m>\n", argv[0]);
+        if (!id) printf("Command line: %s <N>\n", argv[0]);
         MPI_Finalize();
         exit(1);
     }
 
     n = atoi(argv[1]);
 
-    low_value = 2 + id * (n - 1) / p;
-    high_value = 1 + (id + 1) * (n - 1) / p;
+    // calculate subarray boundaries
+    low_value = 2 + (long long)id * (n - 1) / p;
+    high_value = 1 + (long long)(id + 1) * (n - 1) / p;
     size = high_value - low_value + 1;
+    // printf("%d, %d, %d\n", low_value, high_value, size);
 
+    // make sure all primes present in process 0 ?
     proc0_size = (n - 1) / p;
 
     if ((2 + proc0_size) < (int)sqrt((double)n)) {
@@ -48,6 +52,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    // allocate subarray
     marked = (char*)malloc(size);
 
     if (marked == NULL) {
@@ -80,6 +85,7 @@ int main(int argc, char *argv[]) {
         if (!marked[i]) count++;
     if (p > 1) MPI_Reduce(&count, &global_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
+    // stop the timer
     elapsed_time += MPI_Wtime();
 
     // print result

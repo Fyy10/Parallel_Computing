@@ -2,10 +2,10 @@ TARGET_NAME = Lab1
 SOURCE_NAME = Lab1
 NUM_PROC = 6
 LIBS = -lm
-PRIME_N = 1000
+PRIME_N = 100000000
 
 main: $(SOURCE_NAME).c
-	mpicc -o $(TARGET_NAME) $(SOURCE_NAME).c $(LIBS)
+	mpicc -O2 -o $(TARGET_NAME) $(SOURCE_NAME).c $(LIBS)
 
 debug: $(SOURCE_NAME).c
 	mpicc -g -o $(TARGET_NAME) $(SOURCE_NAME).c $(LIBS)
