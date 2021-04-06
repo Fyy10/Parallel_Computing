@@ -15,3 +15,6 @@ clean:
 
 run: main
 	mpiexec -n $(NUM_PROC) $(TARGET_NAME) $(PRIME_N)
+
+test: main test.py
+	python test.py &
