@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
     size = high_value - low_value + 1;
     // printf("%d, %d, %d\n", low_value, high_value, size);
 
-    // make sure all primes present in process 0 ?
+    // make sure all base primes present in process 0
     proc0_size = (n - 1) / p;
 
     if ((2 + proc0_size) < (int)sqrt((double)n)) {
@@ -69,8 +69,9 @@ int main(int argc, char *argv[]) {
         if (prime * prime > low_value)
             first = prime * prime - low_value;
         else {
-            if (!(low_value % prime)) first = 0;
-            else first = prime - (low_value % prime);
+            int r = low_value % prime;
+            if (!r) first = 0;
+            else first = prime - r;
         }
         for (i = first; i < size; i += prime) marked[i] = 1;
         if (!id) {
