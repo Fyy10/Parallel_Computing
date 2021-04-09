@@ -1,7 +1,8 @@
+# visualization
 import matplotlib.pyplot as plt
 import numpy as np
 
-# fig = plt.figure()
+fig = plt.figure()
 # ax3 = fig.axes(projection='3d')
 
 baseline = [
