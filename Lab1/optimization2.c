@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
         for (i = first; i < prime_list_size; i += prime) local_prime_list[i] = 1;
         while (local_prime_list[++index]);
         prime = 2 * (index + 1) + 1;
-    } while (prime * prime <= n);
+    } while (prime * prime <= sqrt(n));
 
     index = 0;
     prime = 3;
