@@ -18,3 +18,6 @@ run: main
 
 test: main test.py
 	python test.py &
+
+benchmark: main benchmark.py
+	python benchmark.py $(NUM_PROC) $(TARGET_NAME) $(PRIME_N)
