@@ -50,12 +50,6 @@ int main(int argc, char *argv[]) {
     proc0_size = n_odd / p;
     prime_list_size = ((int)sqrt((double)n) - 1) / 2;
 
-    if ((2 * proc0_size) < (int)sqrt((double)n)) {
-        if (!id) printf("Too many processes\n");
-        MPI_Finalize();
-        exit(1);
-    }
-
     // allocate subarray
     marked = (char*)malloc(size);
     local_prime_list = (char*)malloc(prime_list_size);
