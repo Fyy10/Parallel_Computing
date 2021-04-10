@@ -23,7 +23,8 @@ int main(int argc, char *argv[]) {
     int size;               // size of 'marked'
     int base_idx;           // the lower bound (index of marked) of current cache group
     int low_value_cache;    // low_value in cache group
-    int cache_size = 1024 * 1024;   // the quantity of numbers that can be stored in cache (cache group size)
+    // the quantity of numbers that can be stored in cache (cache group size)
+    int cache_size = 448 * 1024;    // the target machine has 448KiB L1 cache, store 448 * 1024 of char
 
     MPI_Init(&argc, &argv);
 
