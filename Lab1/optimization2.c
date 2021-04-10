@@ -19,7 +19,6 @@ int main(int argc, char *argv[]) {
     int prime_list_size;
     int n;                  // total problem size (2 - n)
     int p;                  // number of process
-    int proc0_size;         // size of subarray on process 0
     int prime;              // current prime
     int size;               // size of 'marked'
 
@@ -45,9 +44,6 @@ int main(int argc, char *argv[]) {
     high_value = (long long)(id + 1) * n_odd / p;
     size = high_value - low_value + 1;
     // printf("%d: %d, %d, %d\n", id, low_value, high_value, size);
-
-    // make sure all base primes present in process 0
-    proc0_size = n_odd / p;
     prime_list_size = ((int)sqrt((double)n) - 1) / 2;
 
     // allocate subarray
