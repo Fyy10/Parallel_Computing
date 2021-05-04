@@ -1,13 +1,16 @@
 #include "cuda.h"
 #include "stdio.h"
+
 #define TILE_WIDTH 10
 
 void MatMul(float *A, float *B, float *C, int m, int n, int p);
+
 __global__ void MatMulKernel(float *A, float *B, float *C, int m, int n, int p);
+
 void printMat(float *A, int m, int n);
 
 int main() {
-    const int m = 10, n = 20, p = 10;
+    const int m = 15, n = 25, p = 15;
     float a[m][n], b[n][p], c[m][p];
     // generate A
     for (int i = 0; i < m; i++) {
@@ -49,17 +52,15 @@ void MatMul(float *A, float *B, float *C, int m, int n, int p) {
     int sizeC = m * p * sizeof(float);
     float *dA, *dB, *dC;
 
-    cudaMalloc((void **)&dA, sizeA);
-    cudaMalloc((void **)&dB, sizeB);
-    cudaMalloc((void **)&dC, sizeC);
+    cudaMalloc((void **) &dA, sizeA);
+    cudaMalloc((void **) &dB, sizeB);
+    cudaMalloc((void **) &dC, sizeC);
     cudaMemcpy(dA, A, sizeA, cudaMemcpyHostToDevice);
     cudaMemcpy(dB, B, sizeB, cudaMemcpyHostToDevice);
     cudaMemcpy(dC, C, sizeC, cudaMemcpyHostToDevice);
 
-    // 1 block
-    dim3 DimGrid(1);
-    // m * n threads
-    dim3 DimBlock(m, p);
+    dim3 DimGrid((m - 1) / TILE_WIDTH + 1, (p - 1) / TILE_WIDTH + 1);
+    dim3 DimBlock(TILE_WIDTH, TILE_WIDTH);
 
     MatMulKernel<<<DimGrid, DimBlock>>>(dA, dB, dC, m, n, p);
 
@@ -79,14 +80,22 @@ __global__ void MatMulKernel(float *A, float *B, float *C, int m, int n, int p) 
     int idx = row * p + col;
     float value = 0.0;
 
-    for (int phase = 0; phase < n / TILE_WIDTH; phase++) {
-        s_A[threadIdx.y][threadIdx.x] = A[row * n + phase * TILE_WIDTH + threadIdx.x];
-        s_B[threadIdx.y][threadIdx.x] = B[(phase * TILE_WIDTH + threadIdx.y) * p + threadIdx.x];
+    for (int phase = 0; phase < (n - 1) / TILE_WIDTH + 1; phase++) {
+        if (row < m && phase * TILE_WIDTH + threadIdx.x < n)
+            s_A[threadIdx.y][threadIdx.x] = A[row * n + phase * TILE_WIDTH + threadIdx.x];
+        else
+            s_A[threadIdx.y][threadIdx.x] = 0.0;
+        if (phase * TILE_WIDTH + threadIdx.y < n && col < p)
+            s_B[threadIdx.y][threadIdx.x] = B[(phase * TILE_WIDTH + threadIdx.y) * p + col];
+        else
+            s_B[threadIdx.y][threadIdx.x] = 0.0;
         __syncthreads();
 
-        for (int i = 0; i < TILE_WIDTH; i++) value += s_A[threadIdx.y][i] * s_B[i][threadIdx.x];
+        for (int i = 0; i < TILE_WIDTH; i++) {
+            value += s_A[threadIdx.y][i] * s_B[i][threadIdx.x];
+        }
         __syncthreads();
     }
 
-    C[idx] = value;
+    if (row < m && col < p) C[idx] = value;
 }
