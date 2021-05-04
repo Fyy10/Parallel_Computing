@@ -1,12 +1,13 @@
 #include "cuda.h"
 #include "stdio.h"
+#define TILE_WIDTH 10
 
 void MatMul(float *A, float *B, float *C, int m, int n, int p);
 __global__ void MatMulKernel(float *A, float *B, float *C, int m, int n, int p);
 void printMat(float *A, int m, int n);
 
 int main() {
-    const int m = 10, n = 5, p = 10;
+    const int m = 10, n = 20, p = 10;
     float a[m][n], b[n][p], c[m][p];
     // generate A
     for (int i = 0; i < m; i++) {
@@ -70,12 +71,22 @@ void MatMul(float *A, float *B, float *C, int m, int n, int p) {
 }
 
 __global__ void MatMulKernel(float *A, float *B, float *C, int m, int n, int p) {
+    __shared__ float s_A[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float s_B[TILE_WIDTH][TILE_WIDTH];
+
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int idx = row * p + col;
     float value = 0.0;
 
-    for (int i = 0; i < n; i++) value += A[row * n + i] * B[i * p + col];
+    for (int phase = 0; phase < n / TILE_WIDTH; phase++) {
+        s_A[threadIdx.y][threadIdx.x] = A[row * n + phase * TILE_WIDTH + threadIdx.x];
+        s_B[threadIdx.y][threadIdx.x] = B[(phase * TILE_WIDTH + threadIdx.y) * p + threadIdx.x];
+        __syncthreads();
+
+        for (int i = 0; i < TILE_WIDTH; i++) value += s_A[threadIdx.y][i] * s_B[i][threadIdx.x];
+        __syncthreads();
+    }
 
     C[idx] = value;
 }
