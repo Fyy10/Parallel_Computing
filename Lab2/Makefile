@@ -1,5 +1,5 @@
-SOURCE = nbody1
-DEFINE = DEV,UNIFIED
+SOURCE = nbody2
+DEFINE = DEV
 
 main: $(SOURCE).cu
 	nvcc -o nbody $(SOURCE).cu -D $(DEFINE)
