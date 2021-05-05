@@ -32,8 +32,9 @@ void randomizeBodies(float *data, int n) {
  * on all others, but does not update their positions.
  */
 
-void bodyForce(Body *p, float dt, int n) {
-    for (int i = 0; i < n; ++i) {
+__global__ void bodyForceKernel(Body *p, float dt, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
         float Fx = 0.0f;
         float Fy = 0.0f;
         float Fz = 0.0f;
@@ -42,10 +43,14 @@ void bodyForce(Body *p, float dt, int n) {
             float dx = p[j].x - p[i].x;
             float dy = p[j].y - p[i].y;
             float dz = p[j].z - p[i].z;
+            // r^2 = x^2 + y^2 + z^2
             float distSqr = dx * dx + dy * dy + dz * dz + SOFTENING;
+            // 1 / r
             float invDist = rsqrtf(distSqr);
+            // 1 / r^3
             float invDist3 = invDist * invDist * invDist;
 
+            // F = GMm * r / r^3
             Fx += dx * invDist3;
             Fy += dy * invDist3;
             Fz += dz * invDist3;
@@ -54,6 +59,20 @@ void bodyForce(Body *p, float dt, int n) {
         p[i].vx += dt * Fx;
         p[i].vy += dt * Fy;
         p[i].vz += dt * Fz;
+    }
+}
+
+/*
+ * This position integration cannot occur until this round of `bodyForce` has completed.
+ * Also, the next round of `bodyForce` cannot begin until the integration is complete.
+ */
+
+__global__ void updatePositionKernel(Body *p, float dt, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        p[i].x += p[i].vx * dt;
+        p[i].y += p[i].vy * dt;
+        p[i].z += p[i].vz * dt;
     }
 }
 
@@ -67,6 +86,13 @@ int main(const int argc, const char **argv) {
     int salt = 0;
     if (argc > 1) nBodies = 2 << atoi(argv[1]);
 
+#ifdef DEV
+    #define GPUID 1
+    // in the dev env
+    // set gpu id
+    cudaSetDevice(GPUID);
+#endif
+
     /*
      * This salt is for assessment reasons. Tampering with it will result in automatic failure.
      */
@@ -79,15 +105,33 @@ int main(const int argc, const char **argv) {
     int bytes = nBodies * sizeof(Body);
     float *buf;
 
+#ifdef UNIFIED
+    // use unified memory
+    cudaMallocManaged((void **)&buf, bytes);
+#else
     buf = (float *) malloc(bytes);
-
+    // device mem
+    Body *dev_p;
+    cudaMalloc((void **)&dev_p, bytes);
+#endif
     Body *p = (Body *) buf;
+
+    // num of threads
+    size_t block_dim = 1024;
+    // num of blocks
+    size_t grid_dim = (nBodies - 1) / block_dim + 1;
 
     /*
      * As a constraint of this exercise, `randomizeBodies` must remain a host function.
      */
 
+    // 6 * nBodies of float in total
     randomizeBodies(buf, 6 * nBodies); // Init pos / vel data
+
+#ifndef UNIFIED
+    // copy from host to device
+    cudaMemcpy(dev_p, p, bytes, cudaMemcpyHostToDevice);
+#endif
 
     double totalTime = 0.0;
 
@@ -107,18 +151,25 @@ int main(const int argc, const char **argv) {
          * as well as the work to integrate the positions.
          */
 
-        bodyForce(p, dt, nBodies); // compute interbody forces
+#ifdef UNIFIED
+        // compute interbody forces
+        bodyForceKernel<<<grid_dim, block_dim>>>(p, dt, nBodies);
 
-        /*
-         * This position integration cannot occur until this round of `bodyForce` has completed.
-         * Also, the next round of `bodyForce` cannot begin until the integration is complete.
-         */
+        // update positions
+        updatePositionKernel<<<grid_dim, block_dim>>>(p, dt, nBodies);
 
-        for (int i = 0; i < nBodies; i++) { // integrate position
-            p[i].x += p[i].vx * dt;
-            p[i].y += p[i].vy * dt;
-            p[i].z += p[i].vz * dt;
-        }
+        // if unified memory is used, device level synchronization at the last iter is required
+        if (iter == nIters - 1) cudaDeviceSynchronize();
+#else
+        // compute interbody forces
+        bodyForceKernel<<<grid_dim, block_dim>>>(dev_p, dt, nBodies);
+
+        // update positions
+        updatePositionKernel<<<grid_dim, block_dim>>>(dev_p, dt, nBodies);
+
+        // copy from device to host at the last iteration
+        if (iter == nIters - 1) cudaMemcpy(p, dev_p, bytes, cudaMemcpyDeviceToHost);
+#endif
 
     /*******************************************************************/
         // Do not modify the code in this section.
@@ -142,5 +193,10 @@ int main(const int argc, const char **argv) {
      * Feel free to modify code below.
      */
 
+#ifdef UNIFIED
+    cudaFree(buf);
+#else
     free(buf);
+    cudaFree(dev_p);
+#endif
 }
