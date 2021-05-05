@@ -117,7 +117,7 @@ int main(const int argc, const char **argv) {
     Body *p = (Body *) buf;
 
     // num of threads
-    size_t block_dim = 1024;
+    size_t block_dim = 32;
     // num of blocks
     size_t grid_dim = (nBodies - 1) / block_dim + 1;
 
