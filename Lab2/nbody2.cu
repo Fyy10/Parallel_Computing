@@ -32,11 +32,11 @@ void randomizeBodies(float *data, int n) {
  * This function calculates the gravitational impact of all bodies in the system
  * on all others, but does not update their positions.
  */
-
+__attribute__((optimize("-ffast-math")))
 __global__ void bodyForceKernel(Body *p, float dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
-        __shared__ Body shared_bodies[TILE_WIDTH];
+        __shared__ float3 shared_bodies[TILE_WIDTH];
         // make a copy to the register
         float px = p[i].x, py = p[i].y, pz = p[i].z;
 
@@ -46,12 +46,13 @@ __global__ void bodyForceKernel(Body *p, float dt, int n) {
 
         float dx, dy, dz, distSqr, invDist, invDist3;
 
-        int phase, block_phase;
+        int phase, bid;
         int max_phase = (n - 1) / TILE_WIDTH + 1;
 
         for (phase = 0; phase < max_phase; phase++) {
-            // block_phase = (phase + blockIdx.x) % max_phase;
-            shared_bodies[threadIdx.x] = p[phase * TILE_WIDTH + threadIdx.x];
+            // reduce computation on index
+            bid = phase * TILE_WIDTH + threadIdx.x;
+            shared_bodies[threadIdx.x] = make_float3(p[bid].x, p[bid].y, p[bid].z);
             __syncthreads();
 
 //#pragma unroll
@@ -75,9 +76,12 @@ __global__ void bodyForceKernel(Body *p, float dt, int n) {
             __syncthreads();
         }
 
-        p[i].vx += dt * Fx;
-        p[i].vy += dt * Fy;
-        p[i].vz += dt * Fz;
+//        p[i].vx += dt * Fx;
+//        p[i].vy += dt * Fy;
+//        p[i].vz += dt * Fz;
+        atomicAdd(&p[i].vx, __fmul_rn(dt, Fx));
+        atomicAdd(&p[i].vy, __fmul_rn(dt, Fy));
+        atomicAdd(&p[i].vz, __fmul_rn(dt, Fz));
     }
 }
 
@@ -85,13 +89,16 @@ __global__ void bodyForceKernel(Body *p, float dt, int n) {
  * This position integration cannot occur until this round of `bodyForce` has completed.
  * Also, the next round of `bodyForce` cannot begin until the integration is complete.
  */
-
+__attribute__((optimize("-ffast-math")))
 __global__ void updatePositionKernel(Body *p, float dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
-        p[i].x += p[i].vx * dt;
-        p[i].y += p[i].vy * dt;
-        p[i].z += p[i].vz * dt;
+//        p[i].x += p[i].vx * dt;
+//        p[i].y += p[i].vy * dt;
+//        p[i].z += p[i].vz * dt;
+        atomicAdd(&p[i].x, __fmul_rn(p[i].vx, dt));
+        atomicAdd(&p[i].y, __fmul_rn(p[i].vy, dt));
+        atomicAdd(&p[i].z, __fmul_rn(p[i].vz, dt));
     }
 }
 
