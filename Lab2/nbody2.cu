@@ -46,10 +46,16 @@ __global__ void bodyForceKernel(Body *p, float dt, int n) {
 
         float dx, dy, dz, distSqr, invDist, invDist3;
 
-        for (int phase = 0; phase < (n - 1) / TILE_WIDTH + 1; phase++) {
+        int phase, block_phase;
+        int max_phase = (n - 1) / TILE_WIDTH + 1;
+
+        for (phase = 0; phase < max_phase; phase++) {
+            // block_phase = (phase + blockIdx.x) % max_phase;
             shared_bodies[threadIdx.x] = p[phase * TILE_WIDTH + threadIdx.x];
             __syncthreads();
 
+//#pragma unroll
+#pragma acc parallel loop
             for (int j = 0; j < TILE_WIDTH; j++) {
                 dx = shared_bodies[j].x - px;
                 dy = shared_bodies[j].y - py;
@@ -122,7 +128,9 @@ int main(const int argc, const char **argv) {
     // use unified memory
     cudaMallocManaged((void **)&buf, bytes);
 #else
-    buf = (float *) malloc(bytes);
+    // buf = (float *) malloc(bytes);
+    // use page-locked memory
+    cudaHostAlloc((void **)&buf, bytes, cudaHostAllocDefault);
     // device mem
     Body *dev_p;
     cudaMalloc((void **)&dev_p, bytes);
@@ -209,7 +217,8 @@ int main(const int argc, const char **argv) {
 #ifdef UNIFIED
     cudaFree(buf);
 #else
-    free(buf);
+    // free(buf);
+    cudaFreeHost(buf);
     cudaFree(dev_p);
 #endif
 }
