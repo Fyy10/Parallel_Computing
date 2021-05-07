@@ -6,7 +6,7 @@
 #include "cuda_runtime.h"
 
 #define SOFTENING 1e-9f
-#define TILE_WIDTH 128
+#define BLOCK_SIZE 64
 
 /*
  * Each body contains x, y, and z coordinate positions,
@@ -36,7 +36,7 @@ __attribute__((optimize("-ffast-math")))
 __global__ void bodyForceKernel(Body *p, float dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
-        __shared__ float3 shared_bodies[TILE_WIDTH];
+        __shared__ float3 shared_bodies[BLOCK_SIZE];
         // make a copy to the register
         float px = p[i].x, py = p[i].y, pz = p[i].z;
 
@@ -46,39 +46,35 @@ __global__ void bodyForceKernel(Body *p, float dt, int n) {
 
         float dx, dy, dz, distSqr, invDist, invDist3;
 
-        int phase, bid;
-        int max_phase = (n - 1) / TILE_WIDTH + 1;
-
-        for (phase = 0; phase < max_phase; phase++) {
-            // reduce computation on index
-            bid = phase * TILE_WIDTH + threadIdx.x;
-            shared_bodies[threadIdx.x] = make_float3(p[bid].x, p[bid].y, p[bid].z);
-            __syncthreads();
+        int phase = blockIdx.y;
+        // reduce computation on index
+        int bid = phase * BLOCK_SIZE + threadIdx.x;
+        shared_bodies[threadIdx.x] = make_float3(p[bid].x, p[bid].y, p[bid].z);
+        __syncthreads();
 
 //#pragma unroll
 #pragma acc parallel loop
-            for (int j = 0; j < TILE_WIDTH; j++) {
-                dx = shared_bodies[j].x - px;
-                dy = shared_bodies[j].y - py;
-                dz = shared_bodies[j].z - pz;
-                // r^2 = x^2 + y^2 + z^2
-                distSqr = dx * dx + dy * dy + dz * dz + SOFTENING;
-                // 1 / r
-                invDist = rsqrtf(distSqr);
-                // 1 / r^3
-                invDist3 = invDist * invDist * invDist;
+        for (int j = 0; j < BLOCK_SIZE; j++) {
+            dx = shared_bodies[j].x - px;
+            dy = shared_bodies[j].y - py;
+            dz = shared_bodies[j].z - pz;
+            // r^2 = x^2 + y^2 + z^2
+            distSqr = dx * dx + dy * dy + dz * dz + SOFTENING;
+            // 1 / r
+            invDist = rsqrtf(distSqr);
+            // 1 / r^3
+            invDist3 = invDist * invDist * invDist;
 
-                // F = GMm * r / r^3
-                Fx += dx * invDist3;
-                Fy += dy * invDist3;
-                Fz += dz * invDist3;
-            }
-            __syncthreads();
+            // F = GMm * r / r^3
+            Fx += dx * invDist3;
+            Fy += dy * invDist3;
+            Fz += dz * invDist3;
         }
+        __syncthreads();
 
-//        p[i].vx += dt * Fx;
-//        p[i].vy += dt * Fy;
-//        p[i].vz += dt * Fz;
+        // p[i].vx += dt * Fx;
+        // p[i].vy += dt * Fy;
+        // p[i].vz += dt * Fz;
         atomicAdd(&p[i].vx, __fmul_rn(dt, Fx));
         atomicAdd(&p[i].vy, __fmul_rn(dt, Fy));
         atomicAdd(&p[i].vz, __fmul_rn(dt, Fz));
@@ -93,9 +89,9 @@ __attribute__((optimize("-ffast-math")))
 __global__ void updatePositionKernel(Body *p, float dt, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
-//        p[i].x += p[i].vx * dt;
-//        p[i].y += p[i].vy * dt;
-//        p[i].z += p[i].vz * dt;
+        // p[i].x += p[i].vx * dt;
+        // p[i].y += p[i].vy * dt;
+        // p[i].z += p[i].vz * dt;
         atomicAdd(&p[i].x, __fmul_rn(p[i].vx, dt));
         atomicAdd(&p[i].y, __fmul_rn(p[i].vy, dt));
         atomicAdd(&p[i].z, __fmul_rn(p[i].vz, dt));
@@ -144,10 +140,17 @@ int main(const int argc, const char **argv) {
 #endif
     Body *p = (Body *) buf;
 
+    // kernel setting for body force
     // num of threads
-    int block_dim = TILE_WIDTH;
+    int block_dim_force = BLOCK_SIZE;
     // num of blocks
-    int grid_dim = (nBodies - 1) / block_dim + 1;
+    dim3 grid_dim_force((nBodies - 1) / BLOCK_SIZE + 1, (nBodies - 1) / BLOCK_SIZE + 1);
+
+    // kernel setting for position
+    // num of threads
+    int block_dim_pos = BLOCK_SIZE;
+    // num of blocks
+    int grid_dim_pos = (nBodies - 1) / BLOCK_SIZE + 1;
 
     /*
      * As a constraint of this exercise, `randomizeBodies` must remain a host function.
@@ -190,10 +193,10 @@ int main(const int argc, const char **argv) {
         if (iter == nIters - 1) cudaDeviceSynchronize();
 #else
         // compute interbody forces
-        bodyForceKernel<<<grid_dim, block_dim>>>(dev_p, dt, nBodies);
+        bodyForceKernel<<<grid_dim_force, block_dim_force>>>(dev_p, dt, nBodies);
 
         // update positions
-        updatePositionKernel<<<grid_dim, block_dim>>>(dev_p, dt, nBodies);
+        updatePositionKernel<<<grid_dim_pos, block_dim_pos>>>(dev_p, dt, nBodies);
 
         // copy from device to host at the last iteration
         if (iter == nIters - 1) cudaMemcpy(p, dev_p, bytes, cudaMemcpyDeviceToHost);
